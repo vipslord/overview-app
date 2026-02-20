@@ -6,12 +6,16 @@ import { BG_COLOR, ISSUE_TARGET, PR_STATUS, TEXT_COLOR } from './constants';
 type Status =
   | typeof PR_STATUS.OPEN
   | typeof PR_STATUS.MERGED
-  | typeof PR_STATUS.DRAFT;
+  | typeof PR_STATUS.DRAFT
+  | typeof PR_STATUS.DECLINED
+  | typeof PR_STATUS.CLOSED;
 
 const STATUS_COLORS: Record<Status, StatusColors> = {
   [PR_STATUS.OPEN]: { bg: BG_COLOR.STATUS_OPEN, color: TEXT_COLOR.STATUS_OPEN },
   [PR_STATUS.MERGED]: { bg: BG_COLOR.STATUS_MERGED, color: TEXT_COLOR.STATUS_MERGED },
-  [PR_STATUS.DRAFT]: { bg: BG_COLOR.STATUS_DRAFT, color: TEXT_COLOR.STATUS_DRAFT }
+  [PR_STATUS.DRAFT]: { bg: BG_COLOR.STATUS_DRAFT, color: TEXT_COLOR.STATUS_DRAFT },
+  [PR_STATUS.DECLINED]: { bg: BG_COLOR.STATUS_MESSAGE_ERROR, color: TEXT_COLOR.ERROR },
+  [PR_STATUS.CLOSED]: { bg: BG_COLOR.STATUS_MESSAGE_ERROR, color: TEXT_COLOR.ERROR }
 };
 
 const DEFAULT_STATUS: StatusColors = {
@@ -38,8 +42,7 @@ export const formatDate = (dateString: string): string => {
 };
 
 export const getStatusColors = (status?: string): StatusColors => {
-  const normalized = normalizeStatus(status);
-  return STATUS_COLORS[normalized as Status] ?? DEFAULT_STATUS;
+  return STATUS_COLORS[status as Status] ?? DEFAULT_STATUS;
 };
 
 export const formatApprovers = (approvers: Approver[] | undefined): string => {
