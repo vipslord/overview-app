@@ -1,7 +1,7 @@
 import React, { FC } from 'react';
 import { Commit } from '../types';
 import { getShortCommitHash } from '../../../utils/commits';
-import { formatDate } from '../../../utils';
+import { formatDate } from '../../../utils/helpers';
 import { BG_COLOR, BORDER_COLOR, TEXT_COLOR } from '../../../utils/constants';
 
 interface CommitDetailsProps {

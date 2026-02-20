@@ -1,6 +1,6 @@
 import React, { FC } from 'react';
 import { PullRequest } from '../Header/types';
-import { formatApprovers } from '../../utils';
+import { formatApprovers } from '../../utils/helpers';
 import { TEXT_COLOR } from '../../utils/constants';
 
 interface ApprovalsProps {

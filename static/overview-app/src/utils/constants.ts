@@ -7,6 +7,7 @@ export const PR_STATUS = {
 } as const;
 
 export const ISSUE_STATUS = {
+  NEW: 'new',
   DONE: 'done',
   INDETERMINATE: 'indeterminate'
 } as const;
@@ -19,6 +20,9 @@ export const ISSUE_TARGET = {
 
 export const ISSUE_TARGET_KEYWORD = {
   DONE: 'done',
+  TODO: 'to do',
+  TODO_COMPACT: 'todo',
+  NEW: 'new',
   IN_PROGRESS: 'in progress',
   IN_PROGRESS_COMPACT: 'inprogress',
   INDETERMINATE: 'indeterminate'

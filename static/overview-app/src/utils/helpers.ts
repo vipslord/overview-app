@@ -1,7 +1,7 @@
 import { StatusColors } from './types';
 import { PullRequest } from '../components/Header/types';
 import { Approver } from './types';
-import { BG_COLOR, ISSUE_TARGET, PR_STATUS, TEXT_COLOR } from './constants';
+import { BG_COLOR, ISSUE_STATUS, ISSUE_TARGET, ISSUE_TARGET_KEYWORD, PR_STATUS, TEXT_COLOR } from './constants';
 
 type Status =
   | typeof PR_STATUS.OPEN
@@ -41,10 +41,12 @@ export const formatDate = (dateString: string): string => {
   return DATE_TIME_FORMATTER.format(date);
 };
 
+// Resolve status colors
 export const getStatusColors = (status?: string): StatusColors => {
   return STATUS_COLORS[status as Status] ?? DEFAULT_STATUS;
 };
 
+// Format approver names
 export const formatApprovers = (approvers: Approver[] | undefined): string => {
   if (!approvers || approvers.length === 0) return '';
   return approvers.slice(0, 3).map(a => a.name).join(', ');
@@ -59,18 +61,52 @@ export const toDisplayStatus = (status: string): string => {
   return status.charAt(0).toUpperCase() + status.slice(1);
 };
 
-export const getSuggestedTarget = (pr: PullRequest): string | null => {
-  const s = statusToLower(pr);
-  const isApproved = Boolean(pr.approvals && pr.approvals > 0);
-  const isMerged = s === PR_STATUS.MERGED;
-  const isDeclinedOrClosed = s === PR_STATUS.DECLINED || s === PR_STATUS.CLOSED;
-  
-  if (isMerged) return ISSUE_TARGET.DONE;
-  if (isDeclinedOrClosed) return ISSUE_TARGET.TODO;
-  if ((s === PR_STATUS.OPEN || s === PR_STATUS.DRAFT) && isApproved) return ISSUE_TARGET.IN_PROGRESS;
+// Map target category
+export const getTargetCategory = (target: string | null | undefined): string | null => {
+  const normalized = normalizeStatus(target);
+
+  if (normalized.includes(ISSUE_TARGET_KEYWORD.DONE)) {
+    return ISSUE_STATUS.DONE;
+  }
+
+  if (
+    normalized.includes(ISSUE_TARGET_KEYWORD.TODO) ||
+    normalized.includes(ISSUE_TARGET_KEYWORD.TODO_COMPACT) ||
+    normalized.includes(ISSUE_TARGET_KEYWORD.NEW)
+  ) {
+    return ISSUE_STATUS.NEW;
+  }
+
+  if (
+    normalized.includes(ISSUE_TARGET_KEYWORD.IN_PROGRESS) ||
+    normalized.includes(ISSUE_TARGET_KEYWORD.IN_PROGRESS_COMPACT) ||
+    normalized.includes(ISSUE_TARGET_KEYWORD.INDETERMINATE) ||
+    normalized.includes('in review')
+  ) {
+    return ISSUE_STATUS.INDETERMINATE;
+  }
+
   return null;
 };
 
+// Suggest issue target
+export const getSuggestedTarget = (pr: PullRequest, currentIssueStatus?: string | null): string | null => {
+  const s = statusToLower(pr);
+  const isApproved = Boolean(pr.approvals && pr.approvals > 0);
+  const isMerged = s === PR_STATUS.MERGED;
+  const isOpen = s === PR_STATUS.OPEN;
+  const isDraft = s === PR_STATUS.DRAFT;
+  const isDeclinedOrClosed = s === PR_STATUS.DECLINED || s === PR_STATUS.CLOSED;
+  const issueCategory = normalizeStatus(currentIssueStatus);
+  
+  if (isMerged) return issueCategory === ISSUE_STATUS.DONE ? null : ISSUE_TARGET.DONE;
+  if (isDeclinedOrClosed) return issueCategory === ISSUE_STATUS.NEW ? null : ISSUE_TARGET.TODO;
+  if (isOpen) return issueCategory === ISSUE_STATUS.INDETERMINATE ? null : ISSUE_TARGET.IN_PROGRESS;
+  if (isDraft && isApproved) return issueCategory === ISSUE_STATUS.INDETERMINATE ? null : ISSUE_TARGET.IN_PROGRESS;
+  return null;
+};
+
+// Compare statuses
 export const compareStatuses = (status1: string | null, status2: string | null): boolean => {
   return normalizeStatus(status1) === normalizeStatus(status2);
 };

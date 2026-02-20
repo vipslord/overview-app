@@ -8,7 +8,7 @@ import StatusMessage from './StatusMessage/StatusMessage';
 import { usePRDetails } from '../../hooks/usePRDetails';
 import { useIssueStatus } from '../../hooks/useIssueStatus';
 import { useIssueAutomation } from '../../hooks/useIssueAutomation';
-import { getSuggestedTarget, statusToLower } from '../../utils';
+import { getSuggestedTarget, statusToLower } from '../../utils/helpers';
 import { AUTOMATION_MESSAGE, BG_COLOR, ISSUE_STATUS, PR_STATUS, TEXT_COLOR } from '../../utils/constants';
 
 const Details: FC = () => {
@@ -17,8 +17,8 @@ const Details: FC = () => {
 
   const suggestedTarget = useMemo(() => {
     if (!data?.pr) return null;
-    return getSuggestedTarget(data.pr);
-  }, [data?.pr]);
+    return getSuggestedTarget(data.pr, currentIssueStatus);
+  }, [data?.pr, currentIssueStatus]);
 
   const {
     transitionLoading,
@@ -49,6 +49,7 @@ const Details: FC = () => {
     isMerged &&
     !isIssueDone &&
     transitionMessage?.text !== AUTOMATION_MESSAGE.RESTORED_DONE;
+  const hideTransitionButton = manuallyRemovedFromDone && isMerged;
 
   return (
     <div style={{ padding: 10 }}>
@@ -64,7 +65,7 @@ const Details: FC = () => {
 
       <StatusMessage message={transitionMessage} />
 
-      {!manuallyRemovedFromDone && (
+      {!hideTransitionButton && (
         <TransitionButton
           suggestedTarget={suggestedTarget}
           currentIssueStatus={currentIssueStatus}

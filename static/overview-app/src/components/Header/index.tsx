@@ -1,6 +1,6 @@
 import React, { FC } from 'react';
 import { PullRequest } from './types';
-import { formatDate, getStatusColors, statusToLower, toDisplayStatus } from '../../utils';
+import { formatDate, getStatusColors, statusToLower, toDisplayStatus } from '../../utils/helpers';
 import { BG_COLOR, BORDER_COLOR, TEXT_COLOR } from '../../utils/constants';
 
 interface HeaderProps {

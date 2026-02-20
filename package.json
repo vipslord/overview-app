@@ -5,13 +5,18 @@
   "license": "MIT",
   "private": true,
   "devDependencies": {
+    "@types/node": "^22.13.10",
     "eslint": "^8.56.0",
-    "eslint-plugin-react-hooks": "^4.6.0"
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "typescript": "^5.8.2"
   },
   "scripts": {
     "forge:env": "node scripts/load-env.js",
-    "deploy": "npm run forge:env && forge deploy",
-    "tunnel": "npm run forge:env && forge tunnel"
+    "predeploy": "npm run forge:env",
+    "deploy": "forge deploy",
+    "pretunnel": "npm run forge:env",
+    "tunnel": "forge tunnel",
+    "typecheck:backend": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@forge/api": "7.0.1",

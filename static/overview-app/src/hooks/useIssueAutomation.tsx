@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { statusToLower } from '../utils';
+import { getTargetCategory, statusToLower } from '../utils/helpers';
 import { PullRequest } from '../components/Header/types';
 import { TransitionMessage } from '../components/Details/types';
 import { invokeResolver, invokeResolverSafe } from '../utils/bridge';
@@ -83,9 +83,13 @@ export const useIssueAutomation = ({
   useEffect(() => {
     if (
       !issueKey ||
+      !pr ||
       !automationState?.autoMovedToDone ||
       !currentIssueStatus
     ) return;
+
+    const isMergedPr = statusToLower(pr) === PR_STATUS.MERGED;
+    if (!isMergedPr) return;
 
     const isCurrentlyDone = currentIssueStatus.toLowerCase() === ISSUE_STATUS.DONE;
 
@@ -106,7 +110,7 @@ export const useIssueAutomation = ({
     if (!isCurrentlyDone) {
       setManuallyRemovedFromDone(true);
     }
-  }, [issueKey, currentIssueStatus, automationState]);
+  }, [issueKey, pr, currentIssueStatus, automationState]);
 
   useEffect(() => {
     if (!issueKey || !pr || !suggestedTarget) return;
@@ -143,7 +147,7 @@ export const useIssueAutomation = ({
 
           setTransitionMessage(buildSuccessMessage(`Issue automatically moved to ${suggestedTarget}`));
 
-          setCurrentIssueStatus(suggestedTarget.toLowerCase());
+          setCurrentIssueStatus(getTargetCategory(suggestedTarget) || suggestedTarget.toLowerCase());
           setManuallyRemovedFromDone(false);
         }
       } catch (err) {
@@ -171,7 +175,7 @@ export const useIssueAutomation = ({
       if (res?.success) {
         setTransitionMessage(buildSuccessMessage(`Issue ${issueKey} moved to ${suggestedTarget}`));
 
-        setCurrentIssueStatus(suggestedTarget.toLowerCase());
+        setCurrentIssueStatus(getTargetCategory(suggestedTarget) || suggestedTarget.toLowerCase());
       }
     } catch (err) {
       setTransitionMessage(buildErrorMessage(err));

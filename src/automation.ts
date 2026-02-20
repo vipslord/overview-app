@@ -1,17 +1,79 @@
-import { asUser, asApp, route } from '@forge/api';
-import { ISSUE_STATUS_CATEGORY, ISSUE_TARGET_KEYWORD } from './constants.js';
+import { asApp, asUser, route } from '@forge/api';
+import Resolver from '@forge/resolver';
+import { ISSUE_STATUS_CATEGORY, ISSUE_TARGET_KEYWORD } from './constants';
+
+interface AutomationState {
+  autoMovedToDone?: boolean;
+  autoMovedToToDo?: boolean;
+  manuallyMovedFromDone?: boolean;
+}
+
+interface JiraStatusInfo {
+  currentStatus: string;
+  currentCategory: string;
+}
+
+interface IssuePropertyResult {
+  ok: boolean;
+  value?: AutomationState | null;
+  status?: number;
+  text?: string;
+}
+
+interface TransitionResponse {
+  success: boolean;
+  moved?: boolean;
+  already?: boolean;
+  reason?: string;
+  currentStatus?: string;
+  currentCategory?: string;
+  error?: string;
+}
+
+interface JiraTransition {
+  id: string;
+  name?: string;
+  to?: {
+    name?: string;
+    statusCategory?: {
+      key?: string;
+    };
+  };
+}
+
+interface ResolverPayload {
+  issueKey?: string;
+  targetName?: string;
+  isAuto?: boolean;
+  state?: AutomationState;
+}
 
 const AUTOMATION_PROP_KEY = 'overview-app.automationState';
 const AUTO_MOVE_PROP_KEY = 'overview-app.autoMove';
 
-const normalizeLower = (value) => {
+// Format error text
+const toErrorMessage = (error: unknown): string => {
+  return error instanceof Error ? error.message : String(error);
+};
+
+// Normalize to lower
+const normalizeLower = (value: string | undefined | null): string => {
   return String(value || '').toLowerCase();
 };
 
-const getDesiredCategoryKey = (targetName) => {
+// Resolve target category
+const getDesiredCategoryKey = (targetName: string): string | null => {
   const targetLower = normalizeLower(targetName);
 
   if (targetLower.includes(ISSUE_TARGET_KEYWORD.DONE)) return ISSUE_STATUS_CATEGORY.DONE;
+
+  if (
+    targetLower.includes(ISSUE_TARGET_KEYWORD.TODO) ||
+    targetLower.includes(ISSUE_TARGET_KEYWORD.TODO_COMPACT) ||
+    targetLower.includes(ISSUE_TARGET_KEYWORD.NEW)
+  ) {
+    return ISSUE_STATUS_CATEGORY.NEW;
+  }
 
   if (
     targetLower.includes(ISSUE_TARGET_KEYWORD.IN_PROGRESS) ||
@@ -24,14 +86,26 @@ const getDesiredCategoryKey = (targetName) => {
   return null;
 };
 
-const shouldSkipAutoDoneMove = ({ isAuto, targetName, automationState }) => {
+// Skip repeated auto
+const shouldSkipAutoDoneMove = ({ isAuto, targetName, automationState }: { isAuto: boolean; targetName: string; automationState: AutomationState }) => {
   if (!isAuto) return false;
   if (!normalizeLower(targetName).includes(ISSUE_TARGET_KEYWORD.DONE)) return false;
 
   return Boolean(automationState.autoMovedToDone || automationState.manuallyMovedFromDone);
 };
 
-const isAlreadyAtTarget = ({ targetName, desiredCategoryKey, currentStatus, currentCategory }) => {
+// Check target reached
+const isAlreadyAtTarget = ({
+  targetName,
+  desiredCategoryKey,
+  currentStatus,
+  currentCategory
+}: {
+  targetName: string;
+  desiredCategoryKey: string | null;
+  currentStatus: string;
+  currentCategory: string;
+}) => {
   const targetLower = normalizeLower(targetName);
   return (
     (desiredCategoryKey && currentCategory === desiredCategoryKey) ||
@@ -39,17 +113,23 @@ const isAlreadyAtTarget = ({ targetName, desiredCategoryKey, currentStatus, curr
   );
 };
 
-const findMatchingTransition = (transitions, targetName, desiredCategoryKey) => {
+// Find matching transition
+const findMatchingTransition = (
+  transitions: JiraTransition[] | undefined,
+  targetName: string,
+  desiredCategoryKey: string | null
+): JiraTransition | undefined => {
   const targetLower = normalizeLower(targetName);
 
-  return transitions?.find(t =>
-    (desiredCategoryKey && t?.to?.statusCategory?.key === desiredCategoryKey) ||
-    normalizeLower(t?.to?.name).includes(targetLower) ||
-    normalizeLower(t?.name).includes(targetLower)
+  return transitions?.find((transition) =>
+    (desiredCategoryKey && transition?.to?.statusCategory?.key === desiredCategoryKey) ||
+    normalizeLower(transition?.to?.name).includes(targetLower) ||
+    normalizeLower(transition?.name).includes(targetLower)
   );
 };
 
-const loadIssueStatus = async (issueKey) => {
+// Load issue status
+const loadIssueStatus = async (issueKey: string): Promise<JiraStatusInfo> => {
   const issueRes = await asUser().requestJira(route`/rest/api/3/issue/${issueKey}?fields=status`, {
     method: 'GET',
     headers: { Accept: 'application/json' }
@@ -61,15 +141,22 @@ const loadIssueStatus = async (issueKey) => {
     throw new Error(`Failed to fetch issue: ${issueRes.status}`);
   }
 
-  const issueData = await issueRes.json();
+  const issueData = await issueRes.json() as {
+    fields?: {
+      status?: {
+        name?: string;
+        statusCategory?: { key?: string };
+      };
+    };
+  };
+
   const currentStatus = normalizeLower(issueData.fields?.status?.name);
   const currentCategory = normalizeLower(issueData.fields?.status?.statusCategory?.key);
 
   return { currentStatus, currentCategory };
 };
 
-// Read a Jira issue property
-const getIssueProperty = async (issueKey, propKey) => {
+const getIssueProperty = async (issueKey: string, propKey: string): Promise<IssuePropertyResult> => {
   const propRes = await asApp().requestJira(route`/rest/api/3/issue/${issueKey}/properties/${propKey}`, {
     method: 'GET'
   });
@@ -78,12 +165,11 @@ const getIssueProperty = async (issueKey, propKey) => {
     return { ok: false };
   }
 
-  const propData = await propRes.json();
+  const propData = await propRes.json() as { value?: AutomationState | null };
   return { ok: true, value: propData.value || null };
 };
 
-// Write a Jira issue property
-const setIssueProperty = async (issueKey, propKey, value) => {
+const setIssueProperty = async (issueKey: string, propKey: string, value: unknown): Promise<IssuePropertyResult> => {
   const propRes = await asApp().requestJira(route`/rest/api/3/issue/${issueKey}/properties/${propKey}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -98,7 +184,8 @@ const setIssueProperty = async (issueKey, propKey, value) => {
   return { ok: true };
 };
 
-const transitionIssue = async (issueKey, targetName, isAuto = false) => {
+// Execute transition flow
+const transitionIssue = async (issueKey: string, targetName: string, isAuto = false): Promise<TransitionResponse> => {
   try {
     const { currentStatus, currentCategory } = await loadIssueStatus(issueKey);
 
@@ -118,8 +205,8 @@ const transitionIssue = async (issueKey, targetName, isAuto = false) => {
             };
           }
         }
-      } catch (e) {
-        console.warn('Failed to read automationState for auto transition', e.message || e);
+      } catch (error) {
+        console.warn('Failed to read automationState for auto transition', toErrorMessage(error));
       }
     }
 
@@ -131,15 +218,14 @@ const transitionIssue = async (issueKey, targetName, isAuto = false) => {
 
     const transitionsRes = await asUser().requestJira(route`/rest/api/3/issue/${issueKey}/transitions`, {
       method: 'GET',
-      headers: { 'Accept': 'application/json' }
+      headers: { Accept: 'application/json' }
     });
 
     if (!transitionsRes.ok) {
       return { success: false, error: `Failed to fetch transitions: ${transitionsRes.status}` };
     }
 
-    const transitionsData = await transitionsRes.json();
-
+    const transitionsData = await transitionsRes.json() as { transitions?: JiraTransition[] };
     const found = findMatchingTransition(transitionsData.transitions, targetName, desiredCategoryKey);
 
     if (!found) {
@@ -148,7 +234,7 @@ const transitionIssue = async (issueKey, targetName, isAuto = false) => {
 
     const transitionRes = await asUser().requestJira(route`/rest/api/3/issue/${issueKey}/transitions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ transition: { id: found.id } })
     });
 
@@ -157,55 +243,58 @@ const transitionIssue = async (issueKey, targetName, isAuto = false) => {
     }
 
     try {
-      const res = await setIssueProperty(issueKey, AUTO_MOVE_PROP_KEY, {
+      const result = await setIssueProperty(issueKey, AUTO_MOVE_PROP_KEY, {
         target: targetName,
         timestamp: Date.now(),
         isAuto
       });
-      if (!res.ok) {
-        console.warn('Failed to write autoMove property', res.status, res.text);
+
+      if (!result.ok) {
+        console.warn('Failed to write autoMove property', result.status, result.text);
       }
-    } catch (e) {
-      console.warn('Failed to write autoMove property', e.message || e);
+    } catch (error) {
+      console.warn('Failed to write autoMove property', toErrorMessage(error));
     }
 
     if (isAuto && normalizeLower(targetName).includes(ISSUE_TARGET_KEYWORD.DONE)) {
       try {
         const existing = await getIssueProperty(issueKey, AUTOMATION_PROP_KEY);
         const currentState = existing.ok ? existing.value || {} : {};
-        const newState = { ...currentState, autoMovedToDone: true };
+        const newState: AutomationState = { ...currentState, autoMovedToDone: true };
         await setIssueProperty(issueKey, AUTOMATION_PROP_KEY, newState);
-      } catch (e) {
-        console.warn('Failed to persist automationState for auto transition', e.message || e);
+      } catch (error) {
+        console.warn('Failed to persist automationState for auto transition', toErrorMessage(error));
       }
     }
 
     return { success: true, moved: true };
   } catch (error) {
-    console.error(`Error in transitionIssue: ${error.message}`);
-    return { success: false, error: error.message };
+    const message = toErrorMessage(error);
+    console.error(`Error in transitionIssue: ${message}`);
+    return { success: false, error: message };
   }
 };
 
 // Register automation resolvers
-export const registerAutomationResolvers = (resolver) => {
+export const registerAutomationResolvers = (resolver: Resolver): void => {
+  // Issue transition resolver
   resolver.define('transitionIssue', async ({ payload }) => {
-    const { issueKey, targetName, isAuto } = payload || {};
+    const typedPayload = (payload || {}) as ResolverPayload;
+    const issueKey = typedPayload.issueKey;
+    const targetName = typedPayload.targetName;
+    const isAuto = Boolean(typedPayload.isAuto);
 
     if (!issueKey || !targetName) {
       return { success: false, error: 'issueKey and targetName are required' };
     }
 
-    try {
-      return await transitionIssue(issueKey, targetName, Boolean(isAuto));
-    } catch (e) {
-      return { success: false, error: e.message || String(e) };
-    }
+    return transitionIssue(issueKey, targetName, isAuto);
   });
 
-  // Get issue status resolver
+  // Issue status resolver
   resolver.define('getIssueStatus', async ({ payload }) => {
-    const { issueKey } = payload || {};
+    const typedPayload = (payload || {}) as ResolverPayload;
+    const issueKey = typedPayload.issueKey;
 
     if (!issueKey) {
       return { success: false, error: 'issueKey is required' };
@@ -214,14 +303,15 @@ export const registerAutomationResolvers = (resolver) => {
     try {
       const { currentCategory } = await loadIssueStatus(issueKey);
       return { success: true, currentStatus: currentCategory };
-    } catch (e) {
-      return { success: false, error: e.message || String(e) };
+    } catch (error) {
+      return { success: false, error: toErrorMessage(error) };
     }
   });
 
-  // Load automation state resolver
+  // Automation state resolver
   resolver.define('getAutomationState', async ({ payload }) => {
-    const { issueKey } = payload || {};
+    const typedPayload = (payload || {}) as ResolverPayload;
+    const issueKey = typedPayload.issueKey;
 
     if (!issueKey) {
       return { success: false, error: 'issueKey is required', state: null };
@@ -235,29 +325,30 @@ export const registerAutomationResolvers = (resolver) => {
       }
 
       return { success: true, state: existing.value || null };
-    } catch (e) {
-      return { success: false, error: e.message || String(e), state: null };
+    } catch (error) {
+      return { success: false, error: toErrorMessage(error), state: null };
     }
   });
 
-  // Save automation state resolver
   resolver.define('saveAutomationState', async ({ payload }) => {
-    const { issueKey, state } = payload || {};
+    const typedPayload = (payload || {}) as ResolverPayload;
+    const issueKey = typedPayload.issueKey;
+    const state = typedPayload.state;
 
     if (!issueKey || !state) {
       return { success: false, error: 'issueKey and state are required' };
     }
 
     try {
-      const res = await setIssueProperty(issueKey, AUTOMATION_PROP_KEY, state);
+      const result = await setIssueProperty(issueKey, AUTOMATION_PROP_KEY, state);
 
-      if (!res.ok) {
-        return { success: false, error: `Failed to save automation state: ${res.status} ${res.text}` };
+      if (!result.ok) {
+        return { success: false, error: `Failed to save automation state: ${result.status} ${result.text}` };
       }
 
       return { success: true };
-    } catch (e) {
-      return { success: false, error: e.message || String(e) };
+    } catch (error) {
+      return { success: false, error: toErrorMessage(error) };
     }
   });
 };
