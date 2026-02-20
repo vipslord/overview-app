@@ -1,0 +1,28 @@
+modules:
+  jira:issuePanel:
+    - key: overview-app-hello-world-panel
+      resource: main
+      resolver:
+        function: resolver
+      title: overview-app
+      icon: https://developer.atlassian.com/platform/forge/images/issue-panel-icon.svg
+  function:
+    - key: resolver
+      handler: index.handler
+resources:
+  - key: main
+    path: static/overview-app/build
+permissions:
+  external:
+    fetch:
+      backend:
+        - address: api.bitbucket.org
+  scopes: 
+    - read:jira-work
+    - write:jira-work
+app:
+  runtime:
+    name: nodejs24.x
+    memoryMB: 256
+    architecture: arm64
+  id: ari:cloud:ecosystem::app/6a93e8f9-7737-422d-88f4-5440c8fdb2d4

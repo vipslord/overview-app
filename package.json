@@ -1,0 +1,21 @@
+{
+  "name": "jira-issue-panel-custom-ui",
+  "version": "1.2.27",
+  "main": "index.js",
+  "license": "MIT",
+  "private": true,
+  "devDependencies": {
+    "eslint": "^8.56.0",
+    "eslint-plugin-react-hooks": "^4.6.0"
+  },
+  "scripts": {
+    "forge:env": "node scripts/load-env.js",
+    "deploy": "npm run forge:env && forge deploy",
+    "tunnel": "npm run forge:env && forge tunnel"
+  },
+  "dependencies": {
+    "@forge/api": "7.0.1",
+    "@forge/resolver": "1.7.1",
+    "dotenv": "^17.3.1"
+  }
+}
